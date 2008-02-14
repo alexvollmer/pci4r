@@ -1,0 +1,6 @@
+Project Layout
+--------------
+
+bin/	-- Any top-level scripts
+lib/	-- The meat 'n' taters of the code
+spec/	-- RSpec cases
