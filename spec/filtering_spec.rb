@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby -wKU
 
 require File.join(File.dirname(__FILE__), "..", "lib", "filtering")
+require "tempfile"
 
 describe "Filtering" do
   describe "get_words" do
@@ -128,6 +129,37 @@ describe "Filtering" do
       
       @classifier.minimums[:bad] = 0.8
       @classifier.classify("quick money").should == :good
+    end
+  end
+
+  describe "ActiveRecord persistence" do
+
+    ##
+    # We need to have the 'sqlite3' gem installed to test the
+    # ActiveRecord bits.
+    require "rubygems"
+    require "sqlite3"
+
+    before(:each) do
+      @tmpfile = Tempfile.new("pci4r")
+      ar = Filtering::Persistence::ActiveRecordAdapter.new(
+        :adapter => "sqlite3",
+        :database => @tmpfile.path
+      )
+      @classifier = Filtering::Classifier.new(ar)
+    end
+
+    after(:each) do
+      @tmpfile.unlink
+    end
+
+    it "should work the same with ActiveRecord persistence" do
+      @classifier.train("the quick brown fox jumps over the lazy dog", :good)
+      @classifier.train("make quick money in the online casino", :bad)
+      @classifier.feature_count("quick", :good).should == 1.0
+      @classifier.feature_count("quick", :bad).should == 1.0
+      @classifier.feature_count("dog", :good).should == 1.0
+      @classifier.feature_count("dog", :bad).should == 0.0
     end
   end
 end

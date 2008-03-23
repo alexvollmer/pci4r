@@ -12,6 +12,150 @@ require "set"
 # * Have the classifier classify new, unseen text (varies by sub-class)
 module Filtering
   
+  module Persistence
+
+    ##
+    # This class is the adapter between our generic persistence interface
+    # and the core <tt>ActiveRecord</tt> library
+    class ActiveRecordAdapter
+
+      ##
+      # Initialize <tt>ActiveRecord</tt> persistence with the same configuration
+      # options passed to <tt>ActiveRecord::Base.establish_connection</tt>
+      # === Example
+      #   Filtering::Persistence::ActiveRecordAdapter.new(:adapter => "sqlite", :database => "dbfile")
+      #
+      #   Filtering::Persistence::ActiveRecordAdapter.new(
+      #     :adapter  => "mysql",
+      #     :host     => "localhost",
+      #     :username => "me",
+      #     :password => "secret",
+      #     :database => "activerecord"
+      #   )
+      def initialize(config={})
+        require "rubygems"
+        require "activerecord"
+
+        Persistence.class_eval <<-EOF
+          class Feature < ::ActiveRecord::Base
+          end
+
+          class Category < ::ActiveRecord::Base
+          end
+        EOF
+
+        ::ActiveRecord::Base.establish_connection(config)
+
+        c = ::ActiveRecord::Base.connection
+        tables = c.tables
+        unless tables.member?("features")
+          c.create_table(:features) do |t|
+            t.column :feature, :string
+            t.column :category, :string
+            t.column :count, :integer
+          end
+          c.add_index(:features, [:category, :feature], :unique => true)
+        end
+
+        unless tables.member?("categories")
+          c.create_table(:categories) do |t|
+            t.column :category, :string
+            t.column :count, :integer
+          end
+          c.add_index(:categories, :category, :unique => true)
+        end
+      end
+
+      def increment_feature(feature, category)
+        count = feature_count(feature, category)
+        if count > 0
+          Feature.update_all(["count = ?", count + 1], { :feature => feature })
+        else
+          Feature.create!(:feature => feature,
+                          :category => category.to_s.strip,
+                          :count => 1)
+        end
+      end
+
+      def feature_count(feature, category)
+        f = Feature.find(:first,
+                         :conditions => { :feature => feature,
+                                          :category => category.to_s.strip })
+        f ? f.count : 0
+      end
+
+      def increment_category(category)
+        count = category_count(category)
+        if count > 0
+          Category.update_all(["count = ?", count + 1], { :category => category })
+        else
+          Category.create!(:category => category.to_s.strip, :count => 1)
+        end
+      end
+
+      def category_count(category)
+        c = Category.find(:first, :conditions => { :category => category.to_s.strip })
+        c ? c.count : 0
+      end
+
+      def total_count
+        Category.sum("count")
+      end
+
+      def categories
+        Category.find(:all).map { |c| c.category }
+      end
+    end
+
+    ##
+    # A simple +Hash+ backed persistence store. This is the default persistence
+    # for the various classifiers unless another implementation is provided.
+    class InMemory
+      def initialize
+        @feature_count = Hash.new do |h,k|
+          h[k] = Hash.new { |h2,k2| h2[k2] = 0 }
+        end
+        @category_count = Hash.new { |h,k| h[k] = 0 }
+      end
+
+      def increment_feature(feature, category)
+        @feature_count[feature][category] += 1
+      end
+
+      def increment_category(category)
+        @category_count[category] += 1
+      end
+
+      def category_count(category)
+        (@category_count[category] || 0).to_f
+      end
+
+      def feature_count(feature, category)
+        if @feature_count.has_key?(feature) && @category_count.has_key?(category)
+          @feature_count[feature][category].to_f
+        else
+          0.0
+        end
+      end
+
+      ##
+      # List all categories for this classifier.
+      def categories
+        @category_count.keys
+      end
+
+      ##
+      # Returns the total number of items
+      def total_count
+        total = 0
+        @category_count.values.each do |v|
+          total += v
+        end
+        total
+      end
+    end
+  end
+
   ##
   # Pull all of the words out of a given doc +String+ and normalize them.
   # This is the default feature-extraction function used by all +Classifiers+.
@@ -39,18 +183,36 @@ module Filtering
     # This requires a block that will accept a single item
     # and returns its features
     # == Parameters
-    # * <tt>filename</tt>
+    # * <tt>persistence</tt> - The persistence mechanism, defaults to in-memory
     # * <tt>block</tt> - A block that extracts features from a given block of text. If one isn't specified, the +get_words+ function is used.
-    def initialize(filename=nil, &block)
+    # == Persistence
+    # By default (when no +persistence+ parameter is specified), classifiers store
+    # their training data within in-memory +Hashes+.
+    # However, for any decent corpus, this will quickly exceed the capacity of your
+    # system. Therefore, the underlying persistence mechanism is separated from the
+    # classification details. To use a different mechanism, provide a different
+    # object as the +persistence+ parameter to handle the underlying details.
+    #
+    # This code comes with two built-in persistence implementations:
+    # * <tt>Filtering::Persistence::InMemory</tt>
+    # * <tt>Filtering::Persistence::ActiveRecordAdapter</tt>
+    #
+    # You can define your own persistence mechanism as long the the object
+    # you provide implements the following "duck-type" interface:
+    # * <tt>increment_feature(feature, category)</tt>
+    # * <tt>feature_count(feature, category)</tt>
+    # * <tt>increment_category(category)</tt>
+    # * <tt>category_count(category)</tt>
+    # * <tt>total_count()</tt>
+    # * <tt>categories()</tt>
+    # See one of the existing implementations for details.
+    def initialize(persistence=nil, &block)
+      @persistence = persistence || Filtering::Persistence::InMemory.new
       if block_given?
         @get_features_func = block
       else
         @get_features_func = lambda { |item| Filtering.get_words(item) }
       end
-      @feature_count = Hash.new do |h,k|
-        h[k] = Hash.new { |h2,k2| h2[k2] = 0 }
-      end
-      @category_count = Hash.new { |h,k| h[k] = 0 }
       @thresholds = {}
       @thresholds.default = 0
     end
@@ -69,11 +231,7 @@ module Filtering
     #   classifier.feature_count("dog", :good)   #=> 1.0
     #   classifier.feature_count("dog", :bad)    #=> 0.0
     def feature_count(feature, category)
-      if @feature_count.has_key?(feature) && @category_count.has_key?(category)
-        @feature_count[feature][category].to_f
-      else
-        0.0
-      end
+      @persistence.feature_count(feature, category)
     end
     
     ##
@@ -120,8 +278,6 @@ module Filtering
     # * <tt>block</tt> - A block to calculate probability of a feature for a category
     # == Example
     #  classifier = Filtering::Classifier.new
-    #  
-    #  fprob = lambda { |f,c| classifier.feature_probability(f, c) }
     #  
     #  classifier.train("the quick brown fox jumps over the lazy dog", :good)
     #  classifier.train("make quick money in the online casino", :bad)
@@ -192,33 +348,29 @@ module Filtering
     end
 
     def increment_feature(feature, category)
-      @feature_count[feature][category] += 1
+      @persistence.increment_feature(feature, category)
     end
     
     def increment_category(category)
-      @category_count[category] += 1
+      @persistence.increment_category(category)
     end
     
     ##
     # Returns the number of items in a given category
     def category_count(category)
-      (@category_count[category] || 0).to_f
+      @persistence.category_count(category)
     end    
 
     ##
     # List all categories for this classifier.
     def categories
-      @category_count.keys
+      @persistence.categories
     end
 
     ##
     # Returns the total number of items
     def total_count
-      total = 0
-      @category_count.values.each do |v|
-        total += v
-      end
-      total
+      @persistence.total_count
     end
   end
   
@@ -292,8 +444,8 @@ module Filtering
     # is used by the +classify+ method.
     attr_reader :minimums
 
-    def initialize(&block)
-      super(block)
+    def initialize(persistence=nil, &block)
+      super(persistence, &block)
       @minimums = {}
       @minimums.default = 0.0
     end
@@ -302,7 +454,7 @@ module Filtering
     # Classify the given +item+. How the text is classified is affected
     # by any minimums set for a particular category via the +minimums+
     # +Hash+ attribute. By default, the minimum for each category is set
-    # to +0.0+.
+    # to <tt>0.0</tt>.
     # == Parameters
     # * <tt>item</tt> The text block to classify
     # * <tt>default</tt> An optional category if one can't be determined.
