@@ -262,7 +262,7 @@ module Filtering
     # for a given category. Pr(feature | category)
     def feature_probability(feature, category)
       return 0 if category_count(category) == 0
-      feature_count(feature, category) / category_count(category)
+      feature_count(feature, category).to_f / category_count(category).to_f
     end
     
     ##
@@ -289,14 +289,14 @@ module Filtering
     #   #=> prob = 0.25
     def weighted_probability(feature, category, weight=1.0, assumed_prob=0.5, &block)
       raise "You must provide a block" unless block_given?
-      basic_probabilty = block.call(feature, category)
+      basic_probabilty = block.call(feature, category).to_f
       
       totals = 0
       categories.each do |category|
-        totals += feature_count(feature, category)
+        totals += feature_count(feature, category).to_f
       end
       
-      ((weight * assumed_prob) + (totals * basic_probabilty)) / (weight + totals)
+      ((weight * assumed_prob).to_f + (totals * basic_probabilty).to_f) / (weight + totals).to_f
     end
     
     ##
@@ -323,7 +323,7 @@ module Filtering
       max = 0.0
       best = nil
       categories.each do |cat|
-        probs[cat] = prob(item, cat)
+        probs[cat] = prob(item, cat).to_f
         if probs[cat] > max
           max = probs[cat]
           best = cat
@@ -399,7 +399,7 @@ module Filtering
     ##
     # Returns the probability of the category, i.e. Pr(Document|Category)
     def prob(item, category)
-      cat_prob = category_count(category) / total_count
+      cat_prob = category_count(category).to_f / total_count.to_f
       doc_prob = document_probability(item, category)
       doc_prob * cat_prob
     end
@@ -412,7 +412,7 @@ module Filtering
       p = 1
       get_features(item).each do |f|
         p *= weighted_probability(f, category) do |f, c|
-          self.feature_probability(f, c)
+          self.feature_probability(f, c).to_f
         end
       end
       p
@@ -462,7 +462,7 @@ module Filtering
       best = default
       max = 0.0
       categories.each do |cat|
-        p = fisher_prob(item, cat)
+        p = fisher_prob(item, cat).to_f
         if p > @minimums[cat] and p > max
           best = cat
           max = p
@@ -482,7 +482,7 @@ module Filtering
       
       freq_sum = 0
       categories.each { |cat| freq_sum += feature_probability(feature, cat) }
-      fprob / freq_sum
+      fprob.to_f / freq_sum.to_f
     end
     
     ##
@@ -494,7 +494,7 @@ module Filtering
       features = get_features(item).each do |f|
         p *= weighted_probability(f, category) do |f, c|
           self.prob(f, c)
-        end
+        end.to_f
       end
       
       score = -2 * Math.log(p)
@@ -506,10 +506,10 @@ module Filtering
     # An mplementation of the inverse chi-square function
     # http://en.wikipedia.org/wiki/Inverse-chi-square_distribution
     def inv_chi2(chi, df)
-      m = chi / 2.0
+      m = chi.to_f / 2.0
       sum = term = Math.exp(-m)
       (1...df/2).each do |i|
-        term *= m / i
+        term *= m.to_f / i.to_f
         sum += term
       end
       

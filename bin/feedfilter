@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby -KU
+
+require File.join(File.dirname(__FILE__), "..", "lib", "filtering")
+require "optparse"
+require "rubygems"
+require "feed_tools"
+  
+def read(url, classifier)
+  puts "Downloading and parsing #{url}..."
+  feed = FeedTools::Feed.open(url)
+
+  feed.entries.each do |entry|
+    puts
+    puts "-------"
+    printf "%-15s %-20s\n", "Title:", feed.title
+    printf "%-15s %-20s\n", "Publisher:", feed.publisher.name
+    puts
+    puts entry.summary
+    
+    fulltext = "#{entry.title}\n#{entry.publisher}\n#{entry.summary}\n"
+    guess = classifier.classify(fulltext)
+    printf "%-15s %-20s\n", "Guess:", guess
+    
+    if guess
+      print "Enter category (#{guess}): "
+    else
+      print "Enter category: "
+    end
+    cat = gets.strip
+    if cat.empty? && guess
+      cat = guess
+    end
+    classifier.train(fulltext, cat)
+  end
+end
+
+options = {}
+op = OptionParser.new do |o|
+  o.on("-c",
+       "--classifier CLASSIFIER",
+       "Type of classifier: 'bayes', 'fisher'") do |c|
+    options[:classifier] = c
+  end
+  o.on("-p",
+       "--persistence TYPE",
+       "The type of persistence to use, either 'activerecord' or 'memory' (default)") do |p|
+    options[:persistence] = p
+  end
+  o.on("-f",
+       "--config-file FILE",
+       "A YAML file for ActiveRecord configuration. Only needed if 'persistence' is set to 'activerecord'") do |f|
+    options[:file] = f
+  end
+  o.on("-u",
+       "--url URL",
+       "The feed URL to parse and classify") do |f|
+    options[:url] = f
+  end
+end
+op.parse!(ARGV)
+
+persistence = case options[:persistence]
+when "memory", nil
+  Filtering::Persistence::InMemory.new
+when "activerecord"
+  unless options[:file]
+    puts "You need to specify the ActiveRecord config file with -f"
+    puts op
+    exit 1
+  end
+  require "yaml"
+  ar_opts = YAML::load(open(options[:file]))
+  Filtering::Persistence::ActiveRecordAdapter.new(ar_opts)
+else
+  puts "Invalid persistence value: #{options[:persistence]}"
+  puts op
+  exit 1
+end
+
+classifier = case options[:classifier]
+when "bayes"
+  Filtering::NaiveBayes
+when "fisher"
+  Filtering::Fisher
+else
+  puts "Invalid classifier value: #{options[:classifier]}"
+  puts op
+  exit 1
+end.new(persistence)
+
+read(options[:url], classifier)
