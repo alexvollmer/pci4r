@@ -50,12 +50,10 @@ describe "Filtering" do
   describe "Classifier" do
     
     before(:each) do
-      @classifier = Filtering::Classifier.new do |item|
-        Filtering.get_words(item)
-      end
+      @classifier = Filtering::Classifier.new
     end
     
-    it "should track feature counts correctly" do
+    it "should track feature counts correctly (p 121)" do
       @classifier.train("the quick brown fox jumps over the lazy dog", :good)
       @classifier.train("make quick money in the online casino", :bad)
       @classifier.feature_count("quick", :good).should == 1.0
@@ -64,12 +62,12 @@ describe "Filtering" do
       @classifier.feature_count("dog", :bad).should == 0.0
     end
     
-    it "should calculate feature probability correctly Pr(quick | good) = 0.666" do
+    it "should calculate feature probability correctly (p 122)" do
       sample_train(@classifier)
       @classifier.feature_probability("quick", :good).should be_close(0.666, 0.005)
     end
     
-    it "should calculate weighted probability correctly" do
+    it "should calculate weighted probability correctly (p 123)" do
       fprob = lambda { |f,c| @classifier.feature_probability(f, c) }
 
       sample_train(@classifier)
@@ -84,21 +82,18 @@ describe "Filtering" do
     end
   end
 
-  describe "NaiveBayes" do
+  describe "NaiveBayes classifier" do
     before(:each) do
-      @classifier = Filtering::NaiveBayes.new do |item|
-        Filtering.get_words(item)
-      end
+      @classifier = Filtering::NaiveBayes.new
+      sample_train(@classifier)
     end
     
-    it "should calculate the correct document probability" do
-      sample_train(@classifier)
+    it "should calculate the correct document probability (p 125)" do
       @classifier.prob("quick rabbit", :good).should be_close(0.156, 0.005)
       @classifier.prob("quick rabbit", :bad).should be_close(0.050, 0.005)
     end
     
-    it "should calculate correctly with thresholds" do
-      sample_train(@classifier)
+    it "should calculate correctly with thresholds (p 127)" do
       @classifier.classify("quick rabbit", :unknown).should == :good
       @classifier.classify("quick money", :unknown).should == :bad
       
@@ -107,6 +102,32 @@ describe "Filtering" do
       
       10.times { sample_train(@classifier) }
       @classifier.classify("quick money", :unknown).should == :bad
+    end
+  end
+  
+  describe "Fisher classifier" do
+    before(:each) do
+      @classifier = Filtering::Fisher.new
+      sample_train(@classifier)
+    end
+    
+    it "should calculcate basic probability correctly (p 129)" do
+      @classifier.prob('quick', :good).should be_close(0.571, 0.005)
+      @classifier.prob('money', :bad).should == 1.0
+    end
+
+    it "should calculcate Fisher probability correctly (p 130)" do
+      @classifier.prob("quick", :good).should be_close(0.571, 0.005)
+      @classifier.fisher_prob("quick rabbit", :good).should be_close(0.780, 0.005)
+      @classifier.fisher_prob("quick rabbit", :bad).should be_close(0.356, 0.005)
+    end
+
+    it "should classify correctly using minimums (p 131)" do
+      @classifier.classify("quick rabbit").should == :good
+      @classifier.classify("quick money").should == :bad
+      
+      @classifier.minimums[:bad] = 0.8
+      @classifier.classify("quick money").should == :good
     end
   end
 end
