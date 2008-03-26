@@ -1,0 +1,11 @@
+History.txt
+README.txt
+Rakefile
+bin/feedfilter
+lib/filtering.rb
+lib/pci4r.rb
+lib/recommendation.rb
+lib/sim_euclide.rb
+lib/sim_pearson.rb
+lib/similarity.rb
+spec/filtering_spec.rb
