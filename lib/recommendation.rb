@@ -30,7 +30,7 @@ module Recommendation
          end
        end
      
-       (scores.sort!.reverse!)[0..n]
+       (scores.sort!.reverse!)[0...n]
      
      end
 
