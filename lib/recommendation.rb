@@ -100,7 +100,7 @@ module Recommendation
 
   end
 
-  class SimEuclide < Similarity
+  class SimEuclid < Similarity
 
       # Ritorna la distanza euclidea tra due elementi
       def compute(person2)
