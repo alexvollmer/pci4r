@@ -1,0 +1,104 @@
+#!/usr/bin/env ruby
+
+# You need the 'feednormalizer' gem (http://feed-normalizer.rubyforge.org/)
+# to make this one work.
+
+require "rubygems"
+require "feed-normalizer"
+require "open-uri"
+require "optparse"
+require "ostruct"
+  
+##
+# Returns the title and a dictionary of word counts for an RSS feed
+def self.get_word_counts(url)
+  feed = FeedNormalizer::FeedNormalizer.parse(open(url))
+  word_counts = Hash.new { |hash, key| hash[key] = 0 }
+  feed.entries.each do |entry|
+    summary = entry.content
+    get_words(entry.title + ' ' + summary).each do |word|
+      word_counts[word] += 1
+    end
+  end
+  
+  [feed.title, word_counts]
+end
+
+##
+# Convert a string to an array of lower-case plain-text words
+def self.get_words(html)
+  txt = html.gsub(/<[^>]+>/, '')
+  words = txt.split(/[^A-Z^a-z]+/).delete_if { |w| w == '' }
+  words.map { |word| word.downcase }
+end
+
+##
+# Parse command-line args and return <tt>[options, parser]</tt>
+def parse!
+  options = OpenStruct.new
+  options.in = $stdin
+  options.out = $stdout
+  op = OptionParser.new do |opts|
+    opts.banner = "Usage: #{$0} [options]"
+    opts.separator "Options:"
+    opts.on("-i", "--infile FILE", "A text file containing feed URLs (def. stdin)") do |input|
+      options.in = open(input)
+    end
+    opts.on("-o", "--outfile FILE", "Where to write output (def. stdout)") do |output|
+      options.out = open(output, 'w')
+    end
+  end
+  op.parse!(ARGV)
+  [options, op]
+end
+
+options, parser = parse!
+
+apcount = Hash.new { |hash, key| hash[key] = 0 }
+word_counts = {}
+num_feeds = 0
+
+while true
+  begin
+    line = options.in.readline.strip
+    puts "Processing #{line}"
+    num_feeds += 1
+    title, wc = get_word_counts(line)
+    word_counts[title] = wc
+    wc.each do |word, count|
+      apcount[word] += 1 if count > 1
+    end
+  rescue => EOFError
+    break
+  rescue => e
+    puts "Error processing #{line}: #{e}"
+  end
+end
+
+puts "Processed #{num_feeds} feeds"
+
+word_list = []
+apcount.each do |word, bc|
+  frac = bc.to_f / num_feeds
+  if frac > 0.1 and frac < 0.5
+    word_list << word
+  end
+end
+
+begin
+  # print the header line
+  options.out << 'Blog'
+  word_list.each { |word| options.out << "\t #{word}" }
+  options.out << "\n"
+  # print out the data lines
+  word_counts.each do |blog, wc|
+    options.out << blog
+    word_list.each do |word|
+      options.out << "\t#{wc[word] || 0}"
+    end
+    options.out << "\n"
+  end
+ensure
+  options.out.flush
+  options.out.close
+end
