@@ -1,0 +1,63 @@
+#!/usr/bin/env ruby -KU
+
+require File.join(File.dirname(__FILE__), "../lib/clusters.rb")
+require "optparse"
+
+options = {
+  :rotate => false,
+  :distance => 'pearson'
+}
+op = OptionParser.new do |opts|
+  opts.banner = "Usage: #{$0} [options]"
+  opts.separator ""
+  opts.separator "Specific options:"
+  opts.on('-i', '--in FILE', 'The name of the matrix data file') do |i|
+    options[:in] = i
+  end
+  opts.on('-o', '--out FILE', 'The name of the image file to write') do |o|
+    options[:out] = o
+  end
+  opts.on('-r', '--rotate', 'Rotate the data from the infile') do |r|
+    options[:rotate] = true
+  end
+  opts.on('-d',
+          '--distance FUNCTION',
+          %w(pearson tanimoto),
+          'The distance function (pearson, tanimoto)') do |d|
+    options[:distance] = d
+  end
+end
+
+op.parse!
+
+unless options[:out]
+  puts "You must specify an output file"
+  puts op
+  exit 1
+end
+
+unless options[:in]
+  puts "You must specify an input file"
+  puts op
+  exit 1
+end
+
+raise "No such input file: #{options[:in]}" unless FileTest.exist?(options[:in])
+distance =
+case options[:distance]
+  when "pearson"
+    lambda { |v1, v2| Clusters.pearson(v1, v2) }
+  when "tanimoto"
+    lambda { |v1, v2| Clusters.tanimoto(v1, v2) }
+  else
+    puts "Invalid distance function. Choose either 'pearson' or 'tanimoto'"
+    puts op
+    exit 1
+end
+
+blognames, words, data = Clusters.readfile(options[:in])
+data = Clusters.rotate_matrix(data) if options[:rotate]
+cluster = Clusters.h_cluster(data, &distance)
+
+Clusters::Graphs.draw_dendogram(cluster, blognames, options[:out])
+puts "Image written to #{options[:out]}"
