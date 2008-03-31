@@ -1,0 +1,58 @@
+#!/usr/bin/env ruby
+
+require "optparse"
+require "ostruct"
+
+require File.join(File.dirname(__FILE__), "../lib/searching")
+# require File.join(File.dirname(__FILE__), "../lib/neural_net")
+
+options = OpenStruct.new
+options.debug = false
+op = OptionParser.new do |opts|
+  opts.on("-a",
+          "--action ACTION",
+          [:crawl, :search, :query, :rank],
+          "The action to perform") do |a|
+    options.action = a
+  end
+  opts.on("-c", "--config FILE", "The ActiveRecord config file (YAML)") do |c|
+    options.config = YAML.load_file(c)
+  end
+  opts.on("-u", "--urls x,y,z", Array, "List of URLs to crawl") do |urls|
+    options.urls = urls
+  end
+  opts.on("-d", "--debug") do |d|
+    options.debug = true
+  end
+end
+
+op.parse!(ARGV)
+
+if options.debug
+  require "logger"
+  ActiveRecord::Base.logger = Logger.new(STDOUT)
+end
+
+unless options.config
+  puts "You must specify an ActiveRecord configuration file!"
+  puts op
+  exit 1
+end
+
+case options.action
+when :crawl
+  crawler = Searching::Crawler.new(options.config)
+  crawler.crawl(options.urls)
+when :search, :query
+  searcher = Searching::Searcher.new(options.config)
+  scores = searcher.query(ARGV.join(' '), true)
+  scores[0,10].each do |url_id, score|
+    printf("%f\t%s\n", score, searcher.get_url_name(url_id))
+  end
+when :rank
+  crawler = Searching::Crawler.new(options.config)
+  crawler.calculate_page_rank
+else
+  puts "Invalid action specified (#{options.action})"
+  puts op
+end
