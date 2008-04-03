@@ -20,3 +20,11 @@ require 'spec/rake/spectask'
 Spec::Rake::SpecTask.new do |t|
   t.spec_files = FileList['spec/**/*_spec.rb']
 end
+
+Spec::Rake::SpecTask.new('spec_with_rcov') do |t|
+  FileUtils.rm_rf('coverage')
+  t.spec_files = FileList['spec/**/*_spec.rb']
+  t.rcov = true
+  t.rcov_opts = ['--html', '--xrefs', '--include lib', "--exclude spec,gems"]
+  t.verbose = true
+end

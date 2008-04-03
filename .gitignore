@@ -1,3 +1,4 @@
 pkg
 *sqlite3
 *yml
+coverage
