@@ -15,3 +15,8 @@ Hoe.new("pci4r", Pci4R::VERSION) do |p|
     ['sqlite3-ruby', '>=1.2.1']
   ]
 end
+
+require 'spec/rake/spectask'
+Spec::Rake::SpecTask.new do |t|
+  t.spec_files = FileList['spec/**/*_spec.rb']
+end
