@@ -8,15 +8,85 @@ require "activerecord"
 require "uri"
 
 # re-open Array to provide a simple way to map each
-# item to a key-value pair
+# item to a key-value pair with the given block
 class Array
   def to_hash(&block)
     Hash[*self.map(&block).flatten]
   end
 end
 
+##
+# This module contains two main classes to support searching, the
+# +Crawler+ and the +Searcher+. Both rely on an underlying RDBMS
+# system for storage. RDBMS access is handled by <tt>ActiveRecord</tt>
+# or Ruby on Rails fame.
+# === Crawling
+# Crawling involves creating an instance of the +Crawler+, and having
+# it crawl a given set of URLs:
+#   crawler = Searching::Crawler(:adapter => "sqlite3", :name => "search.sqlite3")
+#   crawler.crawl([
+#     http://www.slashdot.org,
+#     http://www.baseballprospectus.com,
+#     http://blog.livollmers.net
+#   ])
+# After crawling, pages can be ranked internally according to a
+# page-ranking algorithm. Page ranking can be performed by:
+#   crawler.calculate_page_rank
+# === Searching
+# Searching is accomplished with an instance of the +Searcher+ class.
 module Searching
   
+  module Persistence
+    def self.if_missing(name, tables)
+      raise "No block given" unless block_given?
+      unless tables.member?(name)
+        yield
+      end
+    end
+
+    def self.setup_database(conn)
+      tables = conn.tables
+      if_missing("urls", tables)
+        conn.create_table(:urls) do |t|
+          t.string :url
+          t.decimal :page_rank
+        end
+        conn.add_index(:urls, :url, :unique => true)        
+      end
+
+      if_missing("words", tables)
+        conn.create_table(:words) do |t|
+          t.string :word
+        end
+        conn.add_index(:words, :word, :unique => true)
+      end
+
+      if_missing("word_locations", tables)
+        conn.create_table(:word_locations) do |t|
+          t.integer :word_id, :url_id, :location
+        end
+        conn.add_index(:word_locations, :word_id)
+        conn.add_index(:word_locations, :url_id)
+      end
+
+      if_missing("links", tables)
+        conn.create_table(:links) do |t|
+          t.integer :from_id, :to_id
+        end
+        # FIXME: are these indexes correct?
+        conn.add_index(:links, [:from_id, :to_id], :unique => true)
+      end
+
+      if_missing("link_words", tables)
+        conn.create_table(:link_words) do |t|
+          t.integer :word_id, :link_id
+        end
+        # FIXME: are these indexes correct?
+        conn.add_index(:link_words, [:word_id, :link_id], :unless => true)
+      end
+    end
+  end
+
   class WordLocation < ActiveRecord::Base
     belongs_to :word
     belongs_to :url
@@ -45,51 +115,88 @@ module Searching
   
   IGNORE_WORDS = %w(the of to and a in is it)
   
+  ##
+  # The +Crawler+ handles the web-crawling of specific URLs and the
+  # storage of how pages are linked to one another. Based on this,
+  # The +Crawler+ can also perform a form of page-ranking.
   class Crawler
+    
+    ##
+    # Creates a new instance based on the config hash given. This
+    # is used to bootstrap an <tt>ActiveRecord</tt> connection so
+    # the hash must meet the conditions of the 
+    # <tt>ActiveRecord::Base.establish_connection</tt> method.
     def initialize(config)
       ActiveRecord::Base.establish_connection(config)
-      c = ActiveRecord::Base.connection
-      tables = c.tables
-      unless tables.member?("urls")
-        c.create_table(:urls) do |t|
-          t.string :url
-          t.decimal :page_rank
-        end
-        c.add_index(:urls, :url, :unique => true)
-      end
+      Persistence.setup_database(ActiveRecord::Base.connection)
+    end
 
-      unless tables.member?("words")
-        c.create_table(:words) do |t|
-          t.string :word
+    ##
+    # Crawl a given set of URLs up to a maximum depth (default 2)
+    def crawl(pages, depth=2)
+      depth.times do
+        new_pages = Set.new
+        pages.each do |page|
+          begin
+            doc = Hpricot(open(page))
+          rescue
+            printf "Could not open %s\n", page
+            next
+          end
+        
+          add_to_index(page, doc)
+        
+          (doc/'a').each do |link|
+            if link['href']
+              url = URI.join(page, link['href']).to_s
+              next if url =~ /'/
+              url = url.split('#').first # drop the fragment
+              if url[0,4] == 'http' and not is_indexed(url)
+                new_pages << url
+              end
+              link_text = get_text_only(link)
+              add_link_ref(page, url, link_text)
+            end
+          end
         end
-        c.add_index(:words, :word, :unique => true)
-      end
-
-      unless tables.member?("word_locations")
-        c.create_table(:word_locations) do |t|
-          t.integer :word_id, :url_id, :location
-        end
-        c.add_index(:word_locations, :word_id)
-        c.add_index(:word_locations, :url_id)
-      end
-
-      unless tables.member?("links")
-        c.create_table(:links) do |t|
-          t.integer :from_id, :to_id
-        end
-        # FIXME: are these indexes correct?
-        c.add_index(:links, [:from_id, :to_id], :unique => true)
-      end
-
-      unless tables.member?("link_words")
-        c.create_table(:link_words) do |t|
-          t.integer :word_id, :link_id
-        end
-        # FIXME: are these indexes correct?
-        c.add_index(:link_words, [:word_id, :link_id], :unless => true)
+      
+        pages = new_pages
       end
     end
-  
+
+    ##
+    # Resets the stored page rank and re-calculates the rank for
+    # all pages in the database. After calling this method pages
+    # can be queried for to get their new rank.
+    def calculate_page_rank(iterations=20)
+      # zero everyone's page rank out
+      Url.update_all("page_rank = 1.0")
+
+      iterations.times do |i|
+        puts "Iteration #{i}"
+        Url.find(:all).each do |url|
+          pr = 0.15
+          
+          # loop through all the pages that link to this one
+          Link.find(:all,
+                    :select => "DISTINCT from_id",
+                    :conditions => { :to_id => url.id }) do |link|
+            from_id = link.from_id
+            # get the page rank of the linker
+            linking_pr = Url.find_by_id(from_id).page_rank
+            
+            # get the total number of links from the linker
+            linking_count = Link.count(:conditions => { :from_id => from_id })
+
+            pr += 0.85 * (linking_pr / linking_count)
+          end
+
+          Url.update_all(["page_rank = ?", pr], ["id = ?", url.id])
+        end
+      end
+    end
+
+    private
     ##
     # Get all of the text out of the given +doc+, shedding the
     # markup tags along the way
@@ -156,81 +263,24 @@ module Searching
       # end
     end
 
-    ##
-    # Since we're in Ruby, we use Hpricot instead of Beautiful Soup.
-    # Crawl each page in <tt>pages</tt> trolling each for hyperlinks. Repeat
-    # the process to the given maximum <tt>depth</tt>
-    def crawl(pages, depth=2)
-      depth.times do
-        new_pages = Set.new
-        pages.each do |page|
-          begin
-            doc = Hpricot(open(page))
-          rescue
-            printf "Could not open %s\n", page
-            next
-          end
-        
-          add_to_index(page, doc)
-        
-          (doc/'a').each do |link|
-            if link['href']
-              url = URI.join(page, link['href']).to_s
-              next if url =~ /'/
-              url = url.split('#').first # drop the fragment
-              if url[0,4] == 'http' and not is_indexed(url)
-                new_pages << url
-              end
-              link_text = get_text_only(link)
-              add_link_ref(page, url, link_text)
-            end
-          end
-        end
-      
-        pages = new_pages
-      end
-    end
-
     def connection
       ActiveRecord::Base.connection
     end
 
-    def calculate_page_rank(iterations=20)
-      # zero everyone's page rank out
-      Url.update_all("page_rank = 1.0")
-
-      iterations.times do |i|
-        puts "Iteration #{i}"
-        Url.find(:all).each do |url|
-          pr = 0.15
-          
-          # loop through all the pages that link to this one
-          Link.find(:all,
-                    :select => "DISTINCT from_id",
-                    :conditions => { :to_id => url.id }) do |link|
-            from_id = link.from_id
-            # get the page rank of the linker
-            linking_pr = Url.find_by_id(from_id).page_rank
-            
-            # get the total number of links from the linker
-            linking_count = Link.count(:conditions => { :from_id => from_id })
-
-            pr += 0.85 * (linking_pr / linking_count)
-          end
-
-          Url.update_all(["page_rank = ?", pr], ["id = ?", url.id])
-        end
-      end
-    end
   end
 
   class Searcher
 
     attr_accessor :weights
-  
-    def initialize(dbname, nndb='db/nn.db')
-      @db = SQLite3::Database.new(dbname)
-      @nn = Searching::SearchNet.new(nndb)
+
+    ##
+    # Create a new +Searcher+ instance with a +Hash+ of parameters
+    # to configure <tt>ActiveRecord</tt>.
+    def initialize(config)
+      require File.join(File.dirname(__FILE__), "neural_net")
+      ActiveRecord::Base.establish_connection(config)
+      Persistence.setup_database(ActiveRecord::Base.connection)
+      @nn = Searching::SearchNet.new(config)
       @weights = [
         [1.0, :location_score ],
         [1.0, :frequency_score],
@@ -238,13 +288,12 @@ module Searching
         [1.0, :link_text_score]
       ]
     end
-  
-    def close
-      @db.close
+
+    def connection
+      ActiveRecord::Base.connection
     end
 
     ##
-    # 4.4
     # Returns two elements for the given query. The first element
     # is an array of rows, each containing the rowid of the matching
     # url and the remaining values indicating the location of each
@@ -263,7 +312,7 @@ module Searching
     
       words.each do |word|
         word_row = 
-          @db.get_first_row("select rowid from word_list where word = '#{word}'")
+          connection.execute("select rowid from word_list where word = '#{word}'").first
       
         if word_row
           word_id = word_row[0]
@@ -280,12 +329,11 @@ module Searching
       end
     
       full_query = "select #{fields} from #{tables} where #{clauses}"
-      rows = @db.execute(full_query)
+      rows = connection.execute(full_query)
       [rows, word_ids]
     end
 
     ##
-    # 4.5
     # returns a +Hash+ of url rowid to score. Scoring is based
     # on the +weights+ attribute, which has a default value declared
     # in the +initialize+ method.
@@ -303,14 +351,12 @@ module Searching
     end
 
     ##
-    # 4.5
     # Get the URL for the given +id+
     def get_url_name(id)
-      return @db.get_first_row("select url from url_list where rowid = ?", id)
+      Url.find(id).url
     end
 
     ##
-    # 4.5
     # Take the given query and return the top 10 results.
     def query(query, print=false)
       rows, word_ids = get_match_rows(query)
@@ -319,7 +365,6 @@ module Searching
     end
     
     ##
-    # 4.5.1
     # Normalize the given +scores+ between 0.0 and 1.0. The
     # +small_is_better+ flag indicates which direction to weight
     # the given scores.
@@ -327,18 +372,15 @@ module Searching
       vsmall = 0.00001
       if small_is_better
         min_score = scores.values.min
-        # return Hash[*scores.to_a.map { |u,l| [u, min_score.to_f / [vsmall, l].max] }.flatten]
         return scores.to_a.to_hash { |u,l| [u, min_score.to_f / [vsmall, l].max] }
       else
         max_score = scores.values.max
         max_score = vsmall if max_score == 0
-        # return Hash[*scores.to_a.map { |u,c| [u, c.to_f / max_score] }.flatten]
         return scores.to_a.to_hash { |u,c| [u, c.to_f / max_score] }
       end
     end
 
     ##
-    # 4.5.2
     # score by word frequency (normalized)
     #---
     # TODO: change this to take two args, with the second defaulted
@@ -350,7 +392,6 @@ module Searching
     end
 
     ##
-    # 4.5.3
     # score by document location (normalized)
     #---
     # TODO: change this to take two args, with the second defaulted
@@ -368,7 +409,6 @@ module Searching
     end
     
     ##
-    # 4.5.4
     # score by word distance
     #---
     # TODO: change this to take two args, with the second defaulted
@@ -395,7 +435,6 @@ module Searching
     end
   
     ##
-    # 4.6.1
     # score by inbound link count
     #---
     # TODO: change this to take two args, with the second defaulted
@@ -405,7 +444,7 @@ module Searching
       inbound_count = unique_urls.to_hash do |url|
         [
           url, 
-          @db.execute("select count(*) from link where to_id = #{url}").first
+          Link.count(:conditions => ["to_id = ?", url])
         ]
       end
       
@@ -413,7 +452,6 @@ module Searching
     end
     
     ##
-    # 4.6.2
     # score by page_rank table
     #---
     # TODO: change this to take two args, with the second defaulted
@@ -422,7 +460,8 @@ module Searching
       page_ranks = rows.map do |row|
         [
           row[0],
-          @db.get_first_row("select score from page_rank where url_id = ?", row[0].to_i)[0].to_f
+          PageRank.find_by_url_id(row[0]).page_rank.to_f
+          # @db.get_first_row("select score from page_rank where url_id = ?", row[0].to_i)[0].to_f
         ]
       end
 
@@ -433,7 +472,6 @@ module Searching
     end
     
     ##
-    # 4.6.3
     # Score by the page rank of text from inbound links
     #---
     # TODO: change this to take two args
@@ -441,6 +479,7 @@ module Searching
       rows, word_ids = args
       link_scores = rows.to_hash { |row| [ row[0], 0 ] }
       word_ids.each do |word_id|
+        # TODO: replace with ActiveRecord
         @db.execute("select l.from_id, l.to_id from link_words w, link l where w.word_id = ? and w.link_id = l.rowid", word_id.to_i).each do |from, to|
           if link_scores.has_key? to
             pr = @db.get_first_row("select score from page_rank where url_id = ?", from.to_i)[0].to_f
@@ -456,7 +495,6 @@ module Searching
     end
 
     ##
-    # 4.7.6
     # Use the neural-net to score results
     def nn_score(rows, word_ids)
       url_ids = rows.map { |row| row[0] }.uniq
