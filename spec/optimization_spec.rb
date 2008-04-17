@@ -101,16 +101,25 @@ describe "Optimization" do
       %w(Buddy ORD),
       %w(Les OMA)
     ]
-    @solution = [1, 4, 3, 2, 7, 3, 6, 3, 2, 4, 5, 3]
+    @domain = [[0, 8]] * (@people.size * 2)
   end
 
   it "should random optimize correctly" do
-    domain = [[0, 8]] * (@people.size * 2)
-    s = Optimization.random_optimize(domain) do |r|
+    s = Optimization.random_optimize(@domain) do |r|
       schedule_cost(r, @people, @flights, @dest)
     end
 
-    s.size.should == @people.size * 2
+    s.size.should equal(@people.size * 2)
+    sched = print_schedule(s, @people, @flights, @dest).split("\n")
+    sched.size.should == @people.size
+  end
+
+  it "should optimize with 'hill climbing'" do
+    s = Optimization.hill_climb(@domain) do |r|
+      schedule_cost(r, @people, @flights, @dest)
+    end
+
+    s.size.should equal(@people.size * 2)
     sched = print_schedule(s, @people, @flights, @dest).split("\n")
     sched.size.should == @people.size
   end
