@@ -20,6 +20,7 @@ def schedule_cost(solution, people, flights, dest)
     outbound = flights[[origin, dest]][solution[d].to_i]
     return_flight = flights[[dest, origin]][solution[d + 1].to_i]
 
+    raise "#{dest},#{origin}:: #{flights[[dest, origin]].inspect} <> #{solution[d + 1].to_i}" unless return_flight
     total_price += outbound[2]
     total_price += return_flight[2]
 
@@ -108,19 +109,20 @@ describe "Optimization" do
     s = Optimization.random_optimize(@domain) do |r|
       schedule_cost(r, @people, @flights, @dest)
     end
-
     s.size.should equal(@people.size * 2)
-    sched = print_schedule(s, @people, @flights, @dest).split("\n")
-    sched.size.should == @people.size
   end
 
   it "should optimize with 'hill climbing'" do
     s = Optimization.hill_climb(@domain) do |r|
       schedule_cost(r, @people, @flights, @dest)
     end
-
     s.size.should equal(@people.size * 2)
-    sched = print_schedule(s, @people, @flights, @dest).split("\n")
-    sched.size.should == @people.size
+  end
+
+  it "should optimize using simulated annealing" do
+    s = Optimization.annealing(@domain) do |r|
+      schedule_cost(r, @people, @flights, @dest)
+    end
+    s.size.should == (@people.size * 2)
   end
 end

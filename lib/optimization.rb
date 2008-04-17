@@ -58,4 +58,32 @@ module Optimization
 
     sol
   end
+
+  def self.annealing(domain, temp=10_000, cool=0.95, step=1, &costf)
+    vec = (0...domain.size).map do |i|
+      (rand(domain[i][1] - domain[i][0]) + domain[i][0]).to_f
+    end
+
+    while temp > 0.1 do
+      i = rand(domain.size - 1)
+      dir = rand(step * 2) - step
+      vecb = vec.dup
+      vecb[i] += dir
+      if vecb[i] < domain[i][0]
+        vecb[i] = domain[i][0]
+      elsif vecb[i] > domain[i][1]
+        vecb[i] = domain[i][1]
+      end
+
+      ea = costf.call(vec)
+      eb = costf.call(vecb)
+      p = Math.exp(-eb - ea) / temp
+
+      vec = vecb if (eb < ea or rand < p)
+
+      temp = temp * cool
+    end
+
+    vec
+  end
 end
