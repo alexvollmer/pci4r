@@ -1,3 +1,5 @@
 pkg
 *sqlite3
 *yml
+coverage
+.DS_Store

@@ -1,0 +1,18 @@
+body {
+  font: 90% "Lucida Grande", "Trebuchet MS", Verdana, sans-serif;
+  background: #fff url(penguins.png) no-repeat fixed bottom left;
+}
+
+h1 {
+  width: 100%;
+  text-align: center;
+  color: #666;
+  font-size: 24pt;
+  letter-spacing: 0.25em;
+  border-bottom: thin solid #922;
+  padding-bottom: 5px;
+}
+
+a, a:visited, h1 {
+  color: #922;
+}
