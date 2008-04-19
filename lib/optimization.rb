@@ -1,10 +1,3 @@
-class Time
-  # :nodoc:
-  def minutes_of_day
-    self.hour * 60 + self.min
-  end
-end
-
 module Optimization
   
   def self.random_optimize(domain, &costf)
@@ -20,7 +13,6 @@ module Optimization
         best = cost
         bestr = r
       end
-      r
     end
     bestr
   end
@@ -35,11 +27,11 @@ module Optimization
       (0...domain.size).each do |j|
         if sol[j] > domain[j][0]
           neighbors << sol.dup
-          neighbors.last[j] += 1
+          neighbors.last[j] -= 1
         end
         if sol[j] < domain[j][1]
           neighbors << sol.dup
-          neighbors.last[j] -= 1
+          neighbors.last[j] += 1
         end
       end
 

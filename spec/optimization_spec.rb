@@ -1,13 +1,15 @@
 require File.join(File.dirname(__FILE__), "../lib/optimization")
 
-PEOPLE = [
-  %w(Seymour BOS),
-  %w(Franny DAL),
-  %w(Zooey CAK),
-  %w(Walt MIA),
-  %w(Buddy ORD),
-  %w(Les OMA)
-]
+class Array
+  def each_slice_with_index(size)
+    i, offset = 0, 0
+    while offset < self.size
+      yield i, self.slice(offset, size)
+      i += 1
+      offset += size
+    end
+  end
+end
 
 def schedule_cost(solution, people, flights, dest)
   total_price = 0
@@ -15,12 +17,13 @@ def schedule_cost(solution, people, flights, dest)
   earliest_dep = 24 * 60
   
   # first calculate latest_arrival and earliest_dep
-  (0...solution.size / 2).each do |d|
-    origin = people[d][1]
-    outbound = flights[[origin, dest]][solution[d].to_i]
-    return_flight = flights[[dest, origin]][solution[d + 1].to_i]
+  solution.each_slice_with_index(2) do |i, d|
+    origin = people[i][1]
+    outbound = flights[[origin, dest]][solution[d[0]].to_i]
+    return_flight = flights[[dest, origin]][solution[d[1]].to_i]
 
-    raise "#{dest},#{origin}:: #{flights[[dest, origin]].inspect} <> #{solution[d + 1].to_i}" unless return_flight
+    raise "#{origin},#{dest}:: #{flights[[origin, dest]].inspect} <> #{solution[d[0]].to_i} -- #{solution.inspect}" unless outbound
+    raise "#{dest},#{origin}:: #{flights[[dest, origin]].inspect} <> #{solution[d[1]].to_i} -- #{solution.inspect}" unless return_flight
     total_price += outbound[2]
     total_price += return_flight[2]
 
@@ -36,10 +39,10 @@ def schedule_cost(solution, people, flights, dest)
   # now loop again to calculate total_wait (which depends on
   # latest_arrival and earliest_dep)
   total_wait = 0
-  (0...solution.size / 2).each do |d|
-    origin = people[d][1]
-    outbound = flights[[origin, dest]][solution[d].to_i]
-    return_flight = flights[[dest, origin]][solution[d + 1].to_i]
+  solution.each_slice_with_index(2) do |i, d|
+    origin = people[i][1]
+    outbound = flights[[origin, dest]][solution[d[0]].to_i]
+    return_flight = flights[[dest, origin]][solution[d[1]].to_i]
 
     total_wait += latest_arrival - get_minutes(outbound[1])
     total_wait += get_minutes(return_flight[0]) - earliest_dep
@@ -102,7 +105,7 @@ describe "Optimization" do
       %w(Buddy ORD),
       %w(Les OMA)
     ]
-    @domain = [[0, 8]] * (@people.size * 2)
+    @domain = [[0, 9]] * (@people.size * 2)
   end
 
   it "should random optimize correctly" do
