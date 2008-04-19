@@ -1,5 +1,39 @@
+##
+# This module provides a number of methods that help pick the
+# best solution from a given domain and cost function. Each function
+# takes an array of domain pairs, where the first number in the pair
+# is the minimum of the domain and the second number is the maximum.
+# The total number of items in the domain array should match the
+# number of items you want in the solution to be computed.
+#
+# Additionally, each function will also yield a randomly-generated
+# solution to a block from which a problem-specific cost should be
+# calculated. Solutions are arrays of values within the domain values
+# given. What these values are mean are specific to your problem-domain,
+# but are limited to the given domain values.
+#
+# ==Example
+#   # a totally dumb cost function
+#   def compute_my_cost(sol)
+#     total = 0
+#     sol.each do { |x| total += x }
+#     total
+#   end
+#
+#   # domain is ten total values, each with a possible solution between 0 and 9
+#   domain = [[0, 9]] * 10
+#
+#   solution = Optimization.random_optimize(domain) do |sol|
+#     compute_my_cost(sol)
+#   end
 module Optimization
-  
+
+  ##
+  # The most naive of the optimization solutions presented here.
+  # This simply generates one thousand random solutions and returns
+  # the cheapest according to the cost computed by the given block.
+  # === options
+  # * <tt>domain</tt> - The domain array of acceptable solution values
   def self.random_optimize(domain, &costf)
     best = 999_999_999
     bestr = nil
@@ -17,6 +51,13 @@ module Optimization
     bestr
   end
 
+  ##
+  # Returns a solution (whose cost is calculated by a given block)
+  # that is calculated by first creating a random solution, then
+  # systematically applies the cost function to each neighboring
+  # solution, finally returning the best of the lot.
+  # === options
+  # * <tt>domain</tt> - The domain array of acceptable solution values
   def self.hill_climb(domain, &costf)
     sol = (0...domain.size).map do |i|
       rand(domain[i][1] - domain[i][0]) + domain[i][0]
@@ -51,6 +92,17 @@ module Optimization
     sol
   end
 
+  ##
+  # Optimization based on a simulation of "annealing". The idea is that
+  # during the process of choosing from random solutions, there is a
+  # decreasing probability that the function will choose a more expensive
+  # solution. The idea is to avoid local minima while casting about for
+  # the best solution.
+  # === options
+  # * <tt>domain</tt> - The array of acceptable solution values
+  # * <tt>temp</tt> - The starting "temperature" value. Solutions are computed until we've cooled down from this temp
+  # * <tt>cool</tt> - The amount of cooling per iteration
+  # * <tt>step</tt> - The amount to shift a single element in the solution
   def self.annealing(domain, temp=10_000, cool=0.95, step=1, &costf)
     vec = (0...domain.size).map do |i|
       (rand(domain[i][1] - domain[i][0]) + domain[i][0]).to_f
