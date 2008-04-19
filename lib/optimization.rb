@@ -34,14 +34,15 @@ module Optimization
   # the cheapest according to the cost computed by the given block.
   # === options
   # * <tt>domain</tt> - The domain array of acceptable solution values
-  def self.random_optimize(domain, &costf)
+  def self.random_optimize(domain)
+    raise "You must provide a block to calculate cost" unless block_given?
     best = 999_999_999
     bestr = nil
     1000.times do |i|
       r = (0...domain.size).map do |i|
         rand(domain[i][1] - domain[i][0]) + domain[i][0]
       end
-      cost = costf.call(r)
+      cost = yield(r)
 
       if cost < best
         best = cost
@@ -58,7 +59,9 @@ module Optimization
   # solution, finally returning the best of the lot.
   # === options
   # * <tt>domain</tt> - The domain array of acceptable solution values
-  def self.hill_climb(domain, &costf)
+  def self.hill_climb(domain)
+    raise "You must provide a block to calculate cost" unless block_given?
+
     sol = (0...domain.size).map do |i|
       rand(domain[i][1] - domain[i][0]) + domain[i][0]
     end
@@ -76,10 +79,10 @@ module Optimization
         end
       end
 
-      current = costf.call(sol)
+      current = yield(sol)
       best = current
       (0...neighbors.size).each do |j|
-        cost = costf.call(neighbors[j])
+        cost = yield(neighbors[j])
         if cost < best
           best = cost
           sol = neighbors[j]
@@ -103,7 +106,9 @@ module Optimization
   # * <tt>temp</tt> - The starting "temperature" value. Solutions are computed until we've cooled down from this temp
   # * <tt>cool</tt> - The amount of cooling per iteration
   # * <tt>step</tt> - The amount to shift a single element in the solution
-  def self.annealing(domain, temp=10_000, cool=0.95, step=1, &costf)
+  def self.annealing(domain, temp=10_000, cool=0.95, step=1)
+    raise "You must provide a block to calculate cost" unless block_given?
+
     vec = (0...domain.size).map do |i|
       (rand(domain[i][1] - domain[i][0]) + domain[i][0]).to_f
     end
@@ -119,8 +124,8 @@ module Optimization
         vecb[i] = domain[i][1]
       end
 
-      ea = costf.call(vec)
-      eb = costf.call(vecb)
+      ea = yield(vec)
+      eb = yield(vecb)
       p = Math.exp(-eb - ea) / temp
 
       vec = vecb if (eb < ea or rand < p)
