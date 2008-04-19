@@ -18,6 +18,7 @@ def schedule_cost(solution, people, flights, dest)
   
   # first calculate latest_arrival and earliest_dep
   solution.each_slice_with_index(2) do |i, d|
+    raise "No people at index #{i}" unless people[i]
     origin = people[i][1]
     outbound = flights[[origin, dest]][solution[d[0]].to_i]
     return_flight = flights[[dest, origin]][solution[d[1]].to_i]
@@ -125,6 +126,13 @@ describe "Optimization" do
   it "should optimize using simulated annealing" do
     s = Optimization.annealing(@domain) do |r|
       schedule_cost(r, @people, @flights, @dest)
+    end
+    s.size.should == (@people.size * 2)
+  end
+
+  it "should optimize using genetic mutation" do
+    s = Optimization.genetic(@domain) do |s|
+      schedule_cost(s, @people, @flights, @dest)
     end
     s.size.should == (@people.size * 2)
   end

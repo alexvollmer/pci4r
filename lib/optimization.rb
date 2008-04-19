@@ -130,4 +130,73 @@ module Optimization
 
     vec
   end
+
+  ##
+  # This function returns a solution using the cost calculated by the
+  # given block. This function uses genetic mutation to find the best
+  # solution.
+  # ===options
+  # * <tt>domain</tt> - The array of acceptable solution values
+  # * <tt>pop_size</tt> - The size of the population from which to apply Darwin's theory
+  # * <tt>step</tt> - How far to mutate one value in the solution
+  # * <tt>mut_prod</tt> - The probability that a new member will mutate (rather than crossover)
+  # * <tt>elite</tt> - The percentage of a generation considered 'elite'
+  # * <tt>iters</tt> - The number of genetic iterations to perform
+  def self.genetic(domain, pop_size=50, step=1, mut_prod=0.2, elite=0.2, iters=100)
+    raise "You must provide a cost function as a block" unless block_given?
+    # build the initial population
+    population = (0...pop_size).map do |i|
+      (0...domain.size).map { |r| rand(domain[r][1] - domain[r][0]) + domain[r][0] }
+    end
+
+    # the number of winners for each generation
+    top_elite = (elite * pop_size).to_i
+
+    # main loop
+    scores = []
+    iters.times do |i|
+      scores = population.map { |p| [yield(p), p] }.sort
+      ranked = scores.map { |s| s[1] }
+
+      # the pure winners
+      population = ranked[0..top_elite]
+
+      # add mutated and bred forms of the winners
+      while population.size < pop_size
+        if rand < mut_prod # mutate!
+          c = rand(top_elite)
+          population << mutate(ranked[c], domain, step)
+        else # crossover!
+          c1 = rand(top_elite)
+          c2 = rand(top_elite)
+          population << crossover(ranked[c1], ranked[c2], domain)
+        end
+      end
+    end
+
+    scores[0][1] # the winner!
+  end
+
+  private
+  # :no-doc:
+  def self.crossover(r1, r2, domain)
+    i = rand(domain.size - 1) + 1
+    r1[0...i] + r2[i..-1]
+  end
+
+  # :no-doc:
+  def self.mutate(vec, domain, step)
+    i = rand(vec.size)
+    if rand < 0.5 and vec[i] > domain[i][0]
+      vec2 = vec.dup
+      vec2[i] =- step
+      vec2
+    elsif vec[i] < domain[i][1]
+      vec2 = vec.dup
+      vec2[i] += step
+      vec2
+    else
+      vec
+    end
+  end
 end
