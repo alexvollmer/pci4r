@@ -1,3 +1,5 @@
+require "set"
+
 module Math
   def self.logb(num, base)
     log(num) / log(base)
@@ -20,13 +22,14 @@ module DecisionTree
     # A <tt>Hash</tt> of results for this branch
     attr_reader :results
 
-    def initialize(column_index, value, t_node, f_node, results)
+    def initialize(column_index=-1, value=nil, t_node=nil, f_node=nil, results=nil)
       @column_index = column_index
       @value = value
       @t_node = t_node
       @f_node = f_node
       @results = results
     end
+
   end
 
   ##
@@ -78,6 +81,40 @@ module DecisionTree
       entropy = entropy - p * Math.logb(p, 2).to_f
     end
     entropy
+  end
+
+  def self.build_tree(rows, &block)
+    return Node.new if rows.empty?
+
+    current_score = yield(rows)
+    best_gain = 0.0
+    best_criteria = nil
+    best_sets = nil
+
+    (0..rows.size).each do |col|
+      column_values = Set.new
+      rows.each { |row| column_values << row[col] }
+      column_values.each do |value|
+        set1, set2 = divide(rows, col, value)
+        p = set1.size.to_f / rows.size.to_f
+        p1 = p * yield(set1)
+        p2 = p * yield(set2)
+        gain = current_score - p1 - (1 - p) * p2
+        if gain > best_gain and not set1.empty? and not set2.empty?
+          best_gain = gain
+          best_criteria = [col, value]
+          best_sets = [set1, set2]
+        end
+      end
+    end
+
+    if best_gain > 0
+      true_branch = build_tree(best_sets[0], &block)
+      false_branch = build_tree(best_sets[1], &block)
+      Node.new(best_criteria[0], best_criteria[1], true_branch, false_branch)
+    else
+      Node.new(unique_counts(rows))
+    end
   end
 
   private
