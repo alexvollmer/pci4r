@@ -73,4 +73,14 @@ describe "DecisionTree" do
       DecisionTree.entropy(s1).should be_close(1.298, 0.005)
     end
   end
+
+  describe "build_tree" do
+    it "should build the correct tree for @data" do
+      t = DecisionTree.build_tree(@data) do |x|
+        DecisionTree.entropy(x)
+      end
+      t.value.should == 'google'
+      t.column_index.should == 0
+    end
+  end
 end

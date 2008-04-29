@@ -22,14 +22,69 @@ module DecisionTree
     # A <tt>Hash</tt> of results for this branch
     attr_reader :results
 
-    def initialize(column_index=-1, value=nil, t_node=nil, f_node=nil, results=nil)
-      @column_index = column_index
-      @value = value
-      @t_node = t_node
-      @f_node = f_node
-      @results = results
+    VALID_KEYS = [ :index, :value, :true_node, :false_node, :results ]
+    ##
+    # Construct a new node instance with the following options (as symbols):
+    #  * <tt>index</tt>
+    #  * <tt>value</tt>
+    #  * <tt>true_node</tt>
+    #  * <tt>false_node</tt>
+    #  * <tt>results</tt>
+    def initialize(opts={})
+      unknown = opts.keys - VALID_KEYS
+      unless unknown.empty?
+        raise "Invalid keys: #{unknown.inspect}"
+      end
+
+      @column_index = opts[:index]
+      @value = opts[:value]
+      @t_node = opts[:true_node]
+      @f_node = opts[:false_node]
+      @results = opts[:results]
     end
 
+    def node_name
+      if @results
+        "#{@value}:#{@results.size}"
+      else
+        "#{@column_index}:#{@value}"
+      end
+    end
+
+    ##
+    def to_dot(out=nil, parent_id=nil, generator=IdGenerator.new)
+      top = out.nil?
+      if top
+        out = ""
+        out << "digraph decision_tree {\n"
+      end
+
+      my_id = generator.next
+      out << "  node[label=\"#{node_name}\"] #{my_id};\n"
+
+      unless @results
+        @t_node.to_dot(out, my_id, generator) if @t_node
+        @f_node.to_dot(out, my_id, generator) if @f_node
+      end
+
+      if parent_id
+        out << "  #{parent_id} -> #{my_id}\n"
+      end
+
+      if top
+        out << "}"
+      end
+    end
+  end
+
+  class IdGenerator
+    def next
+      unless @value
+        @value = 'A'
+      else
+        @value = @value.next
+      end
+    end
   end
 
   ##
@@ -83,6 +138,16 @@ module DecisionTree
     entropy
   end
 
+  ##
+  # Builds a decision tree using the score returned by the given
+  # block. The block receives the entire data set given in the
+  # +rows+ attribute and scores it accordingly for information
+  # gain. The highest score returned for each data set is used
+  # to further sub-divide the data set into tree nodes.
+  #
+  # This method continues to recursively sub-divide the dataset
+  # until no further information gain is possible (also occurs
+  # when the data set is no longer divisible.)
   def self.build_tree(rows, &block)
     return Node.new if rows.empty?
 
@@ -91,14 +156,14 @@ module DecisionTree
     best_criteria = nil
     best_sets = nil
 
-    (0..rows.size).each do |col|
-      column_values = Set.new
-      rows.each { |row| column_values << row[col] }
+    column_count = rows[0].size - 1
+    (0...column_count).each do |col|
+      column_values = Set.new(rows.map { |x| x[col] })
       column_values.each do |value|
         set1, set2 = divide(rows, col, value)
         p = set1.size.to_f / rows.size.to_f
         p1 = p * yield(set1)
-        p2 = p * yield(set2)
+        p2 = yield(set2)
         gain = current_score - p1 - (1 - p) * p2
         if gain > best_gain and not set1.empty? and not set2.empty?
           best_gain = gain
@@ -111,9 +176,12 @@ module DecisionTree
     if best_gain > 0
       true_branch = build_tree(best_sets[0], &block)
       false_branch = build_tree(best_sets[1], &block)
-      Node.new(best_criteria[0], best_criteria[1], true_branch, false_branch)
+      Node.new(:index => best_criteria[0],
+               :value => best_criteria[1],
+               :true_node => true_branch,
+               :false_node => false_branch)
     else
-      Node.new(unique_counts(rows))
+      Node.new(:results => unique_counts(rows))
     end
   end
 
