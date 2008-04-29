@@ -45,7 +45,8 @@ module DecisionTree
 
     def node_name
       if @results
-        "#{@value}:#{@results.size}"
+        key = @results.keys.first
+        "#{key}:#{@results[key]}"
       else
         "#{@column_index}:#{@value}"
       end
