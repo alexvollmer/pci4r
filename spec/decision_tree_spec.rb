@@ -1,5 +1,41 @@
 require File.join(File.dirname(__FILE__), "/../lib/decision_tree")
 
+class MatchNode
+  def initialize(value, index)
+    @value = value
+    @index = index
+  end
+
+  def matches?(target)
+    @target = target
+    if target.results
+      @target.results[@value].eql?(@index)
+    else
+      @target.value.eql?(@value) and @target.column_index.eql?(@index)
+    end
+  end
+
+  def failure_message
+    if @target.results
+      "expected value: #{@value}, index: #{@index} to match (#{@target.results.inspect})"
+    else
+      "expected value: #{@value}, index: #{@index} to match (#{@target.value}:#{@target.column_index})"
+    end
+  end
+
+  def negative_failure_message
+    if @target.results
+      "expected value: #{@value}, index: #{@index} to not (#{@target.results.inspect})"
+    else
+      "expected value: #{@value}, index: #{@index} to not (#{@target.value}:#{@target.column_index})"
+    end
+  end
+end
+
+def match_node(value, index)
+  MatchNode.new(value, index)
+end
+
 describe "DecisionTree" do
   before(:each) do
     @data = [
@@ -22,6 +58,12 @@ describe "DecisionTree" do
     ]
   end
 
+  def build_tree
+    DecisionTree.build_tree(@data) do |r|
+      DecisionTree.entropy(r)
+    end
+  end
+
   describe "self.divide" do
     it "should divide correctly on a String value" do
       result = DecisionTree.divide(@data, 2, 'yes')
@@ -35,6 +77,16 @@ describe "DecisionTree" do
       %w[google (direct) digg kiwitobes].each do |site|
         not_matching.should be_member(site)
       end
+    end
+
+    it "should divide correctly on a numeric value" do
+      result = DecisionTree.divide(@data, 3, 21)
+      result.size.should == 2
+      matching = result.first.map { |m| m[3] }.sort
+      matching.should == [21, 21, 21, 23, 23, 24, 24]
+
+      not_matching = result.last.map { |m| m[3] }.sort
+      not_matching.should == [12, 12, 18, 18, 18, 18, 19, 19, 19]
     end
   end
 
@@ -76,11 +128,34 @@ describe "DecisionTree" do
 
   describe "build_tree" do
     it "should build the correct tree for @data" do
-      t = DecisionTree.build_tree(@data) do |x|
-        DecisionTree.entropy(x)
-      end
-      t.value.should == 'google'
-      t.column_index.should == 0
+      t = build_tree
+      t.should match_node('google', 0)
+      t.t_node.should match_node(21, 3)
+      t.f_node.should match_node('slashdot', 0)
+      t.t_node.t_node.should match_node('Premium', 3)
+      t.t_node.f_node.should match_node('yes', 2)
+    end
+  end
+
+  describe "classify" do
+    it "should classify correctly" do
+      tree = build_tree
+      tree.classify(['(direct)', 'USA', 'yes', 5]).should == {'Basic' => 4}
+    end
+  end
+
+  describe "prune" do
+    it "should prune correctly" do
+      tree = build_tree
+
+      tree.prune(0.1)
+      tree.should match_node('google', 0)
+      # tree.t_node.should match_node('21', 3)
+      tree.f_node.should match_node('slashdot', 0)
+      # match first set of assertions
+
+      tree.prune(1.0)
+      # match second set of assertions
     end
   end
 end

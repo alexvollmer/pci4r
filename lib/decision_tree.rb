@@ -43,6 +43,18 @@ module DecisionTree
       @results = opts[:results]
     end
 
+    def pretty_print(q)
+      q.group(2, '#<node ', '>') do
+        q.seplist([:value, :column_index, :t_node, :f_node, :results],
+                  lambda { q.text ',' }) do |member|
+          q.breakable
+          q.text member.to_s
+          q.text ' = '
+          q.pp self.send(member)
+        end
+      end
+    end
+
     def node_name
       if @results
         key = @results.keys.first
@@ -53,6 +65,9 @@ module DecisionTree
     end
 
     ##
+    # Returns a <tt>String</tt> of graphviz "dot"-notation that
+    # can be used to generate a directed graph visualization of
+    # this tree instance.
     def to_dot(out=nil, parent_id=nil, generator=IdGenerator.new)
       top = out.nil?
       if top
@@ -76,6 +91,54 @@ module DecisionTree
         out << "}"
       end
     end
+
+    ##
+    # Classifies a given +observation+ against the given +tree+.
+    # Classification is essentially predicting the final outcome
+    # using the given arguments.
+    def classify(observation, tree=self)
+      if tree.results
+        tree.results
+      else
+        v = observation[tree.column_index]
+        branch = case v.class
+        when Numeric
+          v >= tree.value ? tree.t_node : tree.f_node
+        else
+          v == tree.value ? tree.t_node : tree.f_node
+        end
+        classify(observation, branch)
+      end
+    end
+
+    ##
+    # Attempt to avoid 'overfitted' trees giving overly-definitive
+    # answers when they may not, in fact, be correct. This is done
+    # by pruning the tree instance.
+    def prune(min_gain, tree=self)
+      if tree.t_node.results.nil?
+        prune(min_gain, tree.t_node)
+      end
+
+      if tree.f_node.results.nil?
+        prune(min_gain, tree.f_node)
+      end
+
+      if tree.t_node.results and tree.f_node.results
+        tb, fb = [], []
+        tree.t_node.results.each do |v,c|
+          tb << [[v]] * c
+        end
+        tree.f_node.results.each do |v,c|
+          fb << [[v]] * c
+        end
+        delta = DecisionTree.entropy(tb + fb) - (DecisionTree.entropy(tb) + DecisionTree.entropy(fb) / 2)
+        if delta < min_gain
+          tree.t_node, tree.f_node = nil, nil
+          tree.results = DecisionTree.unique_counts(tb + fb)
+        end
+      end
+    end
   end
 
   class IdGenerator
@@ -95,15 +158,20 @@ module DecisionTree
   # the given value.  Otherwise, splitting is done on whether or not the
   # set value is equal to the splitting value.
   def self.divide(rows, column, value)
-    splitter = case value.class
-    when Numeric
+    splitter = if value.kind_of?(Numeric)
       lambda { |x| x[column] >= value }
     else
       lambda { |x| x[column] == value }
     end
 
-    set1 = rows.select { |r| splitter.call(r) }
-    set2 = rows.select { |r| not splitter.call(r) }
+    set1, set2 = [], []
+    rows.each do |row|
+      if splitter.call(row)
+        set1 << row
+      else
+        set2 << row
+      end
+    end
     [set1, set2]
   end
 
@@ -129,7 +197,6 @@ module DecisionTree
   ##
   # Measures the amount of disorder in the given set.
   def self.entropy(rows)
-    log2 = lambda { |x| Math.log10(x).to_f / Math.log10(2).to_f }
     results = unique_counts(rows)
     entropy = 0.0
     results.values.each do |v|
@@ -152,21 +219,28 @@ module DecisionTree
   def self.build_tree(rows, &block)
     return Node.new if rows.empty?
 
-    current_score = yield(rows)
+    current_score = block.call(rows)
     best_gain = 0.0
     best_criteria = nil
     best_sets = nil
 
     column_count = rows[0].size - 1
+    # Iterate through each column to find the best split
+    # based on information gain
     (0...column_count).each do |col|
-      column_values = Set.new(rows.map { |x| x[col] })
+      # the set of unique values for a particular column
+      column_values = Set.new(rows.map { |row| row[col] })
+
+      # for each column value, divide the set based on the
+      # value, updating best_gain, best_sets and best_criteria
+      # along the way
       column_values.each do |value|
         set1, set2 = divide(rows, col, value)
         p = set1.size.to_f / rows.size.to_f
-        p1 = p * yield(set1)
-        p2 = yield(set2)
-        gain = current_score - p1 - (1 - p) * p2
-        if gain > best_gain and not set1.empty? and not set2.empty?
+        p1 = p * block.call(set1)
+        p2 = block.call(set2)
+        gain = current_score - p1 - (1 - p) * p2  # information gain
+        if gain > best_gain and set1.size > 0 and set2.size > 0
           best_gain = gain
           best_criteria = [col, value]
           best_sets = [set1, set2]
