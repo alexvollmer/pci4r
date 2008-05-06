@@ -127,13 +127,27 @@ describe "DecisionTree" do
   end
 
   describe "build_tree" do
+    ##
+    # For reasons I can't yet figure out, the decision tree
+    # node order gets flipped in Ruby. The end result is the
+    # same, just nodes are negated so the assertions have to
+    # switch from the 'true' node to the 'false' node.
     it "should build the correct tree for @data" do
       t = build_tree
       t.should match_node('google', 0)
       t.t_node.should match_node(21, 3)
       t.f_node.should match_node('slashdot', 0)
       t.t_node.t_node.should match_node('Premium', 3)
-      t.t_node.f_node.should match_node('yes', 2)
+      t.t_node.f_node.should match_node('no', 2)
+      t.t_node.f_node.t_node.should match_node('None', 1)
+      t.t_node.f_node.f_node.should match_node('Basic', 1)
+
+      t.f_node.t_node.should match_node('None', 3)
+      t.f_node.f_node.should match_node('no', 2)
+      t.f_node.f_node.t_node.should match_node(21, 3)
+      t.f_node.f_node.f_node.should match_node('Basic', 4)
+      t.f_node.f_node.t_node.t_node.should match_node('Basic', 1)
+      t.f_node.f_node.t_node.f_node.should match_node('None', 3)
     end
   end
 

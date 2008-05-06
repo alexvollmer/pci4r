@@ -158,21 +158,13 @@ module DecisionTree
   # the given value.  Otherwise, splitting is done on whether or not the
   # set value is equal to the splitting value.
   def self.divide(rows, column, value)
-    splitter = if value.kind_of?(Numeric)
-      lambda { |x| x[column] >= value }
-    else
-      lambda { |x| x[column] == value }
-    end
-
-    set1, set2 = [], []
-    rows.each do |row|
-      if splitter.call(row)
-        set1 << row
+    set1, set2 = rows.partition do |x|
+      if value.kind_of?(Numeric)
+        x[column] >= value
       else
-        set2 << row
+        x[column] == value
       end
     end
-    [set1, set2]
   end
 
   ##
@@ -217,6 +209,7 @@ module DecisionTree
   # until no further information gain is possible (also occurs
   # when the data set is no longer divisible.)
   def self.build_tree(rows, &block)
+    block = lambda { |x| entropy(x) } unless block
     return Node.new if rows.empty?
 
     current_score = block.call(rows)
