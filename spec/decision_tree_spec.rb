@@ -164,12 +164,30 @@ describe "DecisionTree" do
 
       tree.prune(0.1)
       tree.should match_node('google', 0)
-      # tree.t_node.should match_node('21', 3)
+      tree.t_node.should match_node(21, 3)
+      tree.t_node.t_node.should match_node('Premium', 3)
+      tree.t_node.f_node.should match_node('no', 2)
+      tree.t_node.f_node.t_node.should match_node('None', 1)
+      tree.t_node.f_node.f_node.should match_node('Basic', 1)
+
       tree.f_node.should match_node('slashdot', 0)
-      # match first set of assertions
+      tree.f_node.t_node.should match_node('None', 3)
+      tree.f_node.f_node.should match_node('no', 2)
+      tree.f_node.f_node.t_node.should match_node(21, 3)
+      tree.f_node.f_node.t_node.t_node.should match_node('Basic', 1)
+      tree.f_node.f_node.t_node.f_node.should match_node('None', 3)
+      tree.f_node.f_node.f_node.should match_node('Basic', 4)
 
       tree.prune(1.0)
-      # match second set of assertions
+      tree.should match_node('google', 0)
+      tree.t_node.should match_node(21, 3)
+      tree.t_node.t_node.should match_node('Premium', 3)
+      tree.t_node.f_node.should match_node('no', 2)
+      tree.t_node.f_node.t_node.should match_node('None', 1)
+      tree.t_node.f_node.f_node.should match_node('Basic', 1)
+      tree.f_node.t_node.should be_nil
+      tree.f_node.f_node.should be_nil
+      tree.f_node.results.should == {'None' => 6, 'Basic' => 5}
     end
   end
 end

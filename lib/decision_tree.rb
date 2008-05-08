@@ -16,11 +16,11 @@ module DecisionTree
     # The value a column must match to be true
     attr_reader :value
     # The +Node+ for the "true" value
-    attr_reader :t_node
+    attr_accessor :t_node
     # The +Node+ for the "false" value
-    attr_reader :f_node
+    attr_accessor :f_node
     # A <tt>Hash</tt> of results for this branch
-    attr_reader :results
+    attr_accessor :results
 
     VALID_KEYS = [ :index, :value, :true_node, :false_node, :results ]
     ##
@@ -45,7 +45,7 @@ module DecisionTree
 
     def pretty_print(q)
       q.group(2, '#<node ', '>') do
-        q.seplist([:value, :column_index, :t_node, :f_node, :results],
+        q.seplist([:value, :column_index, :results, :t_node, :f_node],
                   lambda { q.text ',' }) do |member|
           q.breakable
           q.text member.to_s
@@ -113,8 +113,11 @@ module DecisionTree
 
     ##
     # Attempt to avoid 'overfitted' trees giving overly-definitive
-    # answers when they may not, in fact, be correct. This is done
-    # by pruning the tree instance.
+    # answers when they may not, in fact, be correct. Pruning is
+    # done by checking node-pairs to see if they can be merged
+    # with the parent node. This can be done if the increase in
+    # entropy for the parent node is no more than the threshold
+    # specified by the +min_gain+ parameter.
     def prune(min_gain, tree=self)
       if tree.t_node.results.nil?
         prune(min_gain, tree.t_node)
@@ -126,13 +129,9 @@ module DecisionTree
 
       if tree.t_node.results and tree.f_node.results
         tb, fb = [], []
-        tree.t_node.results.each do |v,c|
-          tb << [[v]] * c
-        end
-        tree.f_node.results.each do |v,c|
-          fb << [[v]] * c
-        end
-        delta = DecisionTree.entropy(tb + fb) - (DecisionTree.entropy(tb) + DecisionTree.entropy(fb) / 2)
+        tree.t_node.results.each { |v,c| tb.concat [[v]] * c }
+        tree.f_node.results.each { |v,c| fb.concat [[v]] * c }
+        delta = DecisionTree.entropy(tb + fb) - (DecisionTree.entropy(tb) + DecisionTree.entropy(fb) / 2.to_f)
         if delta < min_gain
           tree.t_node, tree.f_node = nil, nil
           tree.results = DecisionTree.unique_counts(tb + fb)
@@ -141,7 +140,7 @@ module DecisionTree
     end
   end
 
-  class IdGenerator
+  class IdGenerator # :nodoc:
     def next
       unless @value
         @value = 'A'
