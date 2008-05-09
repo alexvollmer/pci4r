@@ -12,10 +12,65 @@ class Array
   end
 end
 
+##
+# == Overview
+# This module contains one class, +Node+, and several methods of interest
+# for dealing with decision trees. Decision trees are created by calling
+# the +build_tree+ function with training data. Training data is an
+# two-dimensional set (array of arrays) where each row contains the same
+# number of entries for each variable, and the final entry is the final
+# outcome observed.
+# == Examples
+# Imagine we have a data set of user activity on a web site. We capture
+# each user's activity in a two-dimension data set where each row contains
+# * The referring web site
+# * The country of origin
+# * Whether or not they read the FAQ
+# * The age the user stated
+# * What plan they signed up for
+# We can build a tree (+Node+) from the data by invoking the +build_tree+ method:
+#  data = [
+#     ['slashdot','USA','yes',18,'None'],
+#     ['google','France','yes',23,'Premium'],
+#     ['digg','USA','yes',24,'Basic'],
+#     ['kiwitobes','France','yes',23,'Basic'],
+#  ]
+#  tree = DecisionTree.build_tree(data)
+#
+# Now that we have a +Node+, we can have it classify futher observations which
+#
+# attempt to predict the final outcome based given data:
+#  tree.classify(['(direct)', 'USA', 'yes', 5])  #=> {'Basic' => 4}
+#
+# The classification is affected by the scoring algorithm used. By default
+# the +build_tree+ method uses the +entropy+ method, but the +gini_impurity+
+# method is also available as is the +variance+ method. These can used
+# by invoking them in a block passed to +build_tree+ like so:
+#
+#  tree = DecisionTree.build_tree(data) { |x| DecisionTree.gini_impurity(x) }
+#
+# === Handling Missing Data
+# If your observations are missing data, use the +md_classify+ method on a
+# +Node+ instance instead of +classify+. This will attempt to choose the
+# correct node based on probabilities calculated from the missing items
+# true and false nodes.
+#
+# === Dealing With Numeric Data
+# When the final result is numeric rather than a strict classification,
+# use the +variance+ method as the scoring function when invoking the
+# +build_tree+ method.
 module DecisionTree
   
   ##
-  # A node in a decision tree.
+  # A node in a decision tree. Each node has a number that is the index
+  # into the data set (the +column_index+ attribute) as well as the
+  # "pivot" value for that node.
+  #
+  # Additionally if a +Node+ is a leaf (i.e. with no children), the
+  # +results+ attribute will contain a <tt>Hash</tt> of outcomes to
+  # counts. If it is not a leaf node it will have two child nodes,
+  # one for items that match this node's value (the +t_node+ attribute)
+  # and one for items that do not match (the +f_node+ attribute).
   class Node
     # The index of the criteria to be tested
     attr_reader :column_index
@@ -31,11 +86,11 @@ module DecisionTree
     VALID_KEYS = [ :index, :value, :true_node, :false_node, :results ]
     ##
     # Construct a new node instance with the following options (as symbols):
-    #  * <tt>index</tt>
-    #  * <tt>value</tt>
-    #  * <tt>true_node</tt>
-    #  * <tt>false_node</tt>
-    #  * <tt>results</tt>
+    # * <tt>index</tt>
+    # * <tt>value</tt>
+    # * <tt>true_node</tt>
+    # * <tt>false_node</tt>
+    # * <tt>results</tt>
     def initialize(opts={})
       unknown = opts.keys - VALID_KEYS
       unless unknown.empty?
@@ -61,7 +116,7 @@ module DecisionTree
       end
     end
 
-    def node_name
+    def node_name # :nodoc:
       if @results
         key = @results.keys.first
         "#{key}:#{@results[key]}"
@@ -105,6 +160,11 @@ module DecisionTree
     #
     # Given an observation array of data this method will return
     # a <tt>Hash</tt> of expected results.
+    #
+    # For tree Node's that are <tt>Numeric</tt>, matches are made
+    # when an observed value is equal to or greater than the Node's
+    # value. All other data types only match under strict equality
+    # (i.e. using the <tt>==</tt> method).
     def classify(observation, tree=self)
       if tree.results
         tree.results
