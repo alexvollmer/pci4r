@@ -190,4 +190,16 @@ describe "DecisionTree" do
       tree.f_node.results.should == {'None' => 6, 'Basic' => 5}
     end
   end
+
+  describe "classifying with missing data" do
+    it "should classify correctly" do
+      tree = build_tree
+      x = tree.md_classify(["google", nil, "yes", nil], tree)
+      # the book is incorrect here, this is the same answer the python code gives.
+      x.should == { "Premium" => 2.25, "Basic" => 0.25 }
+
+      x = tree.md_classify(["google", "France", nil, nil])
+      x.should == { "None" => 0.125, "Premium" => 2.25, "Basic" => 0.125 }
+    end
+  end
 end

@@ -96,6 +96,9 @@ module DecisionTree
     # Classifies a given +observation+ against the given +tree+.
     # Classification is essentially predicting the final outcome
     # using the given arguments.
+    #
+    # Given an observation array of data this method will return
+    # a <tt>Hash</tt> of expected results.
     def classify(observation, tree=self)
       if tree.results
         tree.results
@@ -108,6 +111,37 @@ module DecisionTree
           v == tree.value ? tree.t_node : tree.f_node
         end
         classify(observation, branch)
+      end
+    end
+
+    ##
+    # A variation of the +classify+ method that attempts to deal
+    # with missing data.
+    def md_classify(observation, tree=self)
+      if tree.results
+        tree.results
+      else
+        v = observation[tree.column_index]
+        if v.nil?
+          tr = md_classify(observation, tree.t_node)
+          fr = md_classify(observation, tree.f_node)
+          tcount = tr.values.inject(0) { |sum, n| sum + n }
+          fcount = fr.values.inject(0) { |sum, n| sum + n }
+          tw = tcount.to_f / (tcount + fcount)
+          fw = fcount.to_f / (tcount + fcount)
+          result = {}
+          tr.each { |k,v| result[k] = v * tw }
+          fr.each { |k,v| result[k] = v * fw }
+          result
+        else
+          branch = case v.class
+          when Numeric
+            v >= tree.value ? tree.t_node : tree.f_node
+          else
+            v == tree.value ? tree.t_node : tree.f_node
+          end
+          md_classify(observation, branch)
+        end
       end
     end
 
