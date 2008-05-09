@@ -6,6 +6,12 @@ module Math
   end
 end
 
+class Array
+  def sum
+    inject(0) { |sum, v| sum + v }
+  end
+end
+
 module DecisionTree
   
   ##
@@ -125,8 +131,8 @@ module DecisionTree
         if v.nil?
           tr = md_classify(observation, tree.t_node)
           fr = md_classify(observation, tree.f_node)
-          tcount = tr.values.inject(0) { |sum, n| sum + n }
-          fcount = fr.values.inject(0) { |sum, n| sum + n }
+          tcount = tr.values.sum
+          fcount = fr.values.sum
           tw = tcount.to_f / (tcount + fcount)
           fw = fcount.to_f / (tcount + fcount)
           result = {}
@@ -217,6 +223,21 @@ module DecisionTree
       end
     end
     impurity
+  end
+
+  ##
+  # A scoring function that can be used instead of +entropy+ or 
+  # +gini_impurity+ when you have numeric outcomes. This method
+  # considers distance when scoring numerically so that values
+  # further apart return higher numbers
+  #
+  # A low variance means the values are close together, a high
+  # value indicates that they are further apart.
+  def self.variance(rows)
+    return 0 if rows.empty?
+    data = rows.map { |r| r.last.to_f }
+    mean = rows.sum / rows.size
+    data.map { |d| (d - mean) ** 2 }.sum / data.size
   end
 
   ##
