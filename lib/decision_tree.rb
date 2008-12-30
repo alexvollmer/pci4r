@@ -6,12 +6,6 @@ module Math
   end
 end
 
-class Array
-  def sum
-    inject(0) { |sum, v| sum + v }
-  end
-end
-
 ##
 # == Overview
 # This module contains one class, +Node+, and several methods of interest
@@ -60,7 +54,7 @@ end
 # use the +variance+ method as the scoring function when invoking the
 # +build_tree+ method.
 module DecisionTree
-  
+
   ##
   # A node in a decision tree. Each node has a number that is the index
   # into the data set (the +column_index+ attribute) as well as the
@@ -191,8 +185,8 @@ module DecisionTree
         if v.nil?
           tr = md_classify(observation, tree.t_node)
           fr = md_classify(observation, tree.f_node)
-          tcount = tr.values.sum
-          fcount = fr.values.sum
+          tcount = tr.values.inject(0) { |sum, v| sum + v }
+          fcount = fr.values.inject(0) { |sum, v| sum + v }
           tw = tcount.to_f / (tcount + fcount)
           fw = fcount.to_f / (tcount + fcount)
           result = {}
@@ -286,7 +280,7 @@ module DecisionTree
   end
 
   ##
-  # A scoring function that can be used instead of +entropy+ or 
+  # A scoring function that can be used instead of +entropy+ or
   # +gini_impurity+ when you have numeric outcomes. This method
   # considers distance when scoring numerically so that values
   # further apart return higher numbers
