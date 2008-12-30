@@ -77,6 +77,45 @@ module Pricing
       end
       avg / total_weight
     end
+
+    ##
+    # Partitions the given data based on comparing a randomly generated
+    # float value (between 0 and 1) to the test value. The default
+    # value (0.05) means that 5% of the test data _should_ end up in
+    # the training set. The function returns two arrays, the training
+    # set and the testing set.
+    def divide_data(data, test=0.05)
+      data.partition do |d|
+        rand > test
+      end
+    end
+
+    ##
+    # Tests a given algorithm (in a block) against the given
+    # training and testing sets. Returns the average error of
+    # each item in the testset compared to the training set.
+    def test_algorithm(trainset, testset, &algo)
+      error = 0.0
+      testset.each do |row|
+        guess = algo.call(trainset, row.input)
+        error += (row.result - guess) ** 2
+      end
+      error / testset.size
+    end
+
+    ##
+    # Tests the algorithm given in the block against the given
+    # data with a number of trials. The result is the average error
+    # of each trial.
+    def cross_validate(data, trials=100, test=0.05, &algo)
+      error = 0.0
+      trials.times do
+        training, testing = divide_data(data, test)
+        error += test_algorithm(training, test_algorithm, &algo)
+      end
+      error / trials
+    end
+
   end
 
   ##

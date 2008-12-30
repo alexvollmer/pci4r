@@ -50,4 +50,12 @@ describe Pricing::Weights do
     end
   end
 
+  describe 'cross validation' do
+    it 'should partition data correctly' do
+      data = (1..100).to_a
+      training, testing = Pricing.divide_data(data)
+      training.size.should be_close(95, 10)
+      testing.size.should be_close(5, 10)
+    end
+  end
 end
