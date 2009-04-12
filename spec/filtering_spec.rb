@@ -4,6 +4,40 @@ require File.join(File.dirname(__FILE__), "..", "lib", "filtering")
 require "tempfile"
 
 describe "Filtering" do
+  describe "tokenise" do
+    it "should ignore stop words" do
+      @words = "I told him to ignore most of these".tokenise
+      @words.should_not be_member("told".stem)
+      @words.should_not be_member("him".stem)
+      @words.should be_member("ignore".stem)
+      @words.should be_member("these".stem)
+    end
+
+    it "should honor added stop words" do
+      String.add_stop_words(%w(ignore all these))
+      @words = "I told him to ignore most of these".tokenise
+      @words.should_not be_member("told".stem)
+      @words.should_not be_member("him".stem)
+      @words.should_not be_member("ignore".stem)
+      @words.should_not be_member("these".stem)
+    end
+
+    it "should honor removed stop words" do
+      String.remove_stop_words(%w(dont not cant couldnt))
+      @words = "I don't want you trying to do things you can't".tokenise
+      @words.should be_member("dont".stem)
+      @words.should be_member("cant".stem)
+    end
+
+    it "should tokenise properly" do
+      str = "The fisherman fished a fish out of the fishing holes"
+      expected = %w(fisherman fish fish out fish hole)
+      str.tokenise.should == expected
+      String.n_gram_length = 2
+      expected = %w(fisherman_fish fisherman fish_fish fish fish_out fish out_fish out fish_hole fish hole)
+      str.tokenise.should == expected
+    end
+  end
   describe "get_words" do
 
     before(:each) do
@@ -130,6 +164,11 @@ describe "Filtering" do
       @classifier.minimums[:bad] = 0.8
       @classifier.classify("quick money").should == :good
     end
+
+	it "should handle long documents w/out barfing" do
+		@classifier.classify("make penis fast " * 100000).should == :bad
+	end
+
   end
 
   describe "ActiveRecord persistence" do
@@ -161,5 +200,6 @@ describe "Filtering" do
       @classifier.feature_count("dog", :good).should == 1.0
       @classifier.feature_count("dog", :bad).should == 0.0
     end
+		
   end
 end

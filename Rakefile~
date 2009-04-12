@@ -12,8 +12,7 @@ Hoe.new("pci4r", Pci4R::VERSION) do |p|
   p.url = "http://github.com/alexvollmer/pci4r/tree/master"
   p.extra_deps = [
     ['activerecord', '>=2.0.0'],
-    ['sqlite3-ruby', '>=1.2.1'],
-    ['stemmer'     , '>=1.0.1']
+    ['sqlite3-ruby', '>=1.2.1']
   ]
 end
 

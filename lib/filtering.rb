@@ -1,4 +1,5 @@
 require "set"
+require "stemmer"
 
 ##
 # This module provides a number of +Classifier+ classes that are instantiated,
@@ -517,3 +518,61 @@ module Filtering
     end
   end
 end
+
+class String
+
+  @@n_gram_length = 1
+
+  # These are copied uncritically from Lucas Carlson's Classifier library.
+  @@stop_words = %w(a again all along are also an and as at but by came can cant couldnt did didn didnt do doesnt dont ever first from have her here him how i if in into is isnt it itll just last least like most my new no not now of on or should sinc so some th than this that the their then those to told too true try until url us were when whether while with within yes you youll)
+
+  def self.n_gram_length=(newval)
+    @@n_gram_length = newval
+  end
+
+  def self.stop_words=(newval)
+    @@stop_words = newval
+  end
+  def self.stop_words
+    @@stop_words
+  end
+  def self.add_stop_words(adds)
+    @@stop_words += adds.map {|w| w.downcase}
+    @@stop_words.uniq!
+  end
+  def self.remove_stop_words(removes)
+    @@stop_words -= removes
+  end
+  def tokenise
+    # Doing some regex massaging.
+    # Replace single or double dashes w/a single space.  Replace tildes w/spaces
+	  text = gsub(/(-{1,2}|~)/, ' ').downcase
+
+    # Eat punctuation
+    text.gsub!(/[^\w\s]/, '')
+
+    # Change digits to placeholder
+    text.gsub!(/\d/, '#')
+
+    words = text.split.select {|w| w.length > 1 and not(@@stop_words.include?(w))}
+
+    tokens = []
+    0.upto(words.length) do |i|
+      @@n_gram_length.downto(1) do |k|
+        chunk = words[i, k]
+        if chunk.length == k then
+          # TODO?: keep from crossing obvious sentence boundaries (e.g., test for periods in elements other than chunk[-1])
+          tokens << chunk.map do |w|
+            # puts(w)
+            w.stem
+          end.join('_')
+        end
+      end
+    end
+
+    return tokens # + words.map {|w| w.stem}
+
+  end
+
+end
+
